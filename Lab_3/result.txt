@@ -1,0 +1,23 @@
+Map 0:
+- Connectivity 4:
+    + Path cost: 154.0
+- Connectivity 8:
+    + Path cost: 133.5807358037434
+
+Map 1:
+- Connectivity 4:
+    + Path cost: 240.0
+- Connectivity 8:
+    + Path cost: 191.96551211459388
+
+Map 2:
+- Connectivity 4:
+    + Path cost: 632.0
+- Connectivity 8:
+    + Path cost: 555.8477631085033
+
+Map 3:
+- Connectivity 4:
+    + Path cost: 688.0
+- Connectivity 8:
+    + Path cost: 523.3940110268419
