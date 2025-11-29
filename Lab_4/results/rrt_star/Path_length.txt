@@ -1,0 +1,15 @@
+Map 0:
+Distance smooth path at 170 Iterations:  142.06834041349404
+Distance smooth path at 658 Iterations:  133.80443416284433
+
+Map 1:
+Distance smooth path at 1006 Iterations:  200.58302658090548
+Distance smooth path at 1115 Iterations:  198.91389594133454
+
+Map 2:
+Distance smooth path at 10506 Iterations:  593.1249794964966
+Distance smooth path at 14084 Iterations:  578.5030254006324
+
+Map 3:
+Distance smooth path at 161 Iterations:  608.0386336737612
+Distance smooth path at 4000 Iterations:  518.7295492310878

@@ -100,10 +100,10 @@ class RRT_Star:
         self.max_distance = max_distance
         self.q_start = q_start
         self.q_goal = q_goal
-        self.J={}
-        self.J.update({q_start : 0})
 
     def run_RRT_Star(self):
+        current_iter = 0
+        current_dist = 0
         edge_goal = []
         path_first_time = []
         check_first = False
@@ -111,6 +111,10 @@ class RRT_Star:
         min_dist = 5
         G_vertex = [self.q_start]
         G_edge = []
+        J = [0.0]
+        threshold = 5
+        self.log_delta_q = np.log2(self.delta_q)
+        self.log_max_distance = np.log2(self.max_distance)
 
         c_free_space = []
         for i, j in np.ndindex(self.c_space.shape):
@@ -121,44 +125,62 @@ class RRT_Star:
             q_rand = self.RAND_CONF(c_free_space, self.p, self.q_goal)
             id, q_near = self.NEAREST_VERTEX(q_rand=q_rand, G=G_vertex)
             q_new = self.NEW_CONF(q_near=q_near, q_rand=q_rand, delta_q=self.delta_q)
-            if self.IS_FREE_SEGMENT(q_near=q_near, q_new=q_new, c_space=self.c_space, depth=0, max_depth=np.log2(self.delta_q)):
-                G_vertex, G_edge = self.REWIRE_QNEAR_TO_QNEW(G_vertex, G_edge, id, q_near, q_new, self.J)
-                G_vertex, G_edge = self.REWIRE_QNEW_FROM_QNEAR(G_vertex, G_edge, q_new, self.J)
-                if self.DISTANCE(q_new=q_new, q_goal=self.q_goal) < min_dist and check_first == False:
-                    self.J[self.q_goal] = self.J[q_new] + q_new.dist(self.q_goal)
-                    G_vertex.append(self.q_goal)
-                    G_edge.append((len(G_vertex)-2, len(G_vertex)-1))
-                    path_first_time = [G_vertex.copy(), G_edge.copy(), k + 1]
-                    edge_goal = [(len(G_vertex) - 2,len(G_vertex) - 1)]
-                    check_first = True
+            if q_new not in G_vertex and self.IS_FREE_SEGMENT(q_near=q_near, q_new=q_new, c_space=self.c_space, depth=0, max_depth=self.log_delta_q):
+                G_vertex, G_edge, J = self.REWIRE_QNEAR_TO_QNEW(G_vertex, G_edge, id, q_near, q_new, J)
+                G_vertex, G_edge, J = self.REWIRE_QNEW_FROM_QNEAR(G_vertex, G_edge, q_new, J)
+                if check_first == True and self.DISTANCE(q_new=q_new, q_goal=self.q_goal) < min_dist :
+                    _, _, path = fill_path(G_vertex, G_edge ,edge_goal)
+                    new_smooth_path = self.smoothing_function(path, G_vertex)
+                    new_dist = calculate_distance(new_smooth_path, G_vertex)
+                    if new_dist < current_dist:
+                        if current_dist - new_dist < threshold:
+                            current_iter = k + 1
+                            break
+                        current_dist = new_dist
 
-        path_converge = [G_vertex.copy(), G_edge.copy(), self.K]
+                if check_first == False and self.DISTANCE(q_new=q_new, q_goal=self.q_goal) < min_dist:
+                        cost_q_goal = J[G_vertex.index(q_new)] + q_new.dist(self.q_goal)
+                        J.append(cost_q_goal)
+                        G_vertex.append(self.q_goal)
+                        edge_goal = [(len(G_vertex) - 2,len(G_vertex) - 1)]
+                        G_edge.append(edge_goal[0])
+                        path_first_time = [G_vertex.copy(), G_edge.copy(), k + 1]
+                        check_first = True
+                        _, _, path = fill_path(path_first_time[0], path_first_time[1], edge_goal)
+                        smooth_path = self.smoothing_function(path, path_first_time[0])
+                        current_dist = calculate_distance(smooth_path, path_first_time[0])
+
+
+        if current_iter == 0:
+            current_iter = self.K
+        path_converge = [G_vertex, G_edge, current_iter]
         return path_first_time, path_converge, edge_goal
     
     def REWIRE_QNEAR_TO_QNEW(self, G_vertex, G_edge, idx, q_near, q_new, J):
         id_min = idx
-        J[q_new] = J[q_near] + q_near.dist(q_new)
+        cost_q_new = J[idx] + q_near.dist(q_new)
+        J.append(cost_q_new)
         Q_near = self.NEAR(G_vertex, q_new)
         for id, q in Q_near:
-            if self.IS_FREE_SEGMENT(q, q_new, self.c_space, depth=0, max_depth=np.log2(self.max_distance)) and (J[q] + q.dist(q_new) < J[q_new]):
+            if self.IS_FREE_SEGMENT(q, q_new, self.c_space, depth=0, max_depth=self.log_max_distance) and (J[id] + q.dist(q_new) < J[-1]):
                 id_min = id
-                J[q_new] = J[q] + q.dist(q_new)
+                J[-1] = J[id] + q.dist(q_new)
         
         G_vertex.append(q_new)
         G_edge.append((id_min, len(G_vertex) - 1))
 
-        return G_vertex, G_edge
+        return G_vertex, G_edge, J
     
     def REWIRE_QNEW_FROM_QNEAR(self, G_vertex, G_edge, q_new, J):
         Q_near = self.NEAR(G_vertex, q_new)
         for id, q in Q_near:
-            if self.IS_FREE_SEGMENT(q, q_new, self.c_space, depth=0, max_depth=np.log2(self.max_distance)) and (J[q_new] + q.dist(q_new) < J[q]):
-                J[q] = J[q_new] + q.dist(q_new)
+            if self.IS_FREE_SEGMENT(q, q_new, self.c_space, depth=0, max_depth=self.log_max_distance) and (J[-1] + q.dist(q_new) < J[id]):
+                J[id] = J[-1] + q.dist(q_new)
                 id_parent = self.PARENT(G_edge, id)
                 G_edge.remove((id_parent, id))
                 G_edge.append((len(G_vertex) - 1, id))
         
-        return G_vertex, G_edge
+        return G_vertex, G_edge, J
 
     def PARENT(self, G_edge, q_child_idx):
         for edge in G_edge:
@@ -182,28 +204,31 @@ class RRT_Star:
 
     def NEAR(self, G_vertex, q_new):
         Q_near = []
-        for id, point in enumerate(G_vertex):
+        for id in range(len(G_vertex)):
+            point = G_vertex[id]
             if q_new.dist(point) <= self.max_distance:
                 Q_near.append((id, point))
         
         return Q_near
 
     def RAND_CONF(self, c_free_space, p, q_goal):
-        if np.random.rand() >= (1 - p):
+        if np.random.rand() < p:
             return q_goal
 
         else:
             return np.random.choice(c_free_space)
 
     def NEAREST_VERTEX(self, q_rand, G):
-        min_dist = np.inf
-        idx = -1
-        for i, point in enumerate(G):
+        q_near = G[0]
+        nearest_dist = G[0].dist(q_rand)
+        idx = 0
+        for i in range(len(G)):
+            point = G[i]
             dist = q_rand.dist(point)
-            if dist < min_dist:
+            if dist < nearest_dist:
                 q_near = point
                 idx = i
-                min_dist = dist
+                nearest_dist = dist
 
         return idx, q_near
 
@@ -212,13 +237,11 @@ class RRT_Star:
         if q_near_vector.norm() < delta_q:
             return q_rand
         q_near_vector_unit = q_near_vector.unit()
-        q_new = Point(q_near.x + delta_q * q_near_vector_unit.x,
-                      q_near.y + delta_q * q_near_vector_unit.y)
-        q_new = Point(round(q_new.x), round(q_new.y))
-        return q_new
+        q_new = q_near.__add__(q_near_vector_unit.scale(self.delta_q))
+        return Point(round(q_new.x), round(q_new.y))
     
     def IS_FREE_SEGMENT(self, q_near, q_new, c_space, depth, max_depth):
-        if depth > max_depth:
+        if depth >= max_depth:
             return True
 
         if self.POINT_COLLIDED(q_new, c_space):
@@ -238,11 +261,12 @@ class RRT_Star:
     def POINT_COLLIDED(self, q, c_space):
         if q.x < 0 or q.x > c_space.shape[0] or q.y < 0 or q.y > c_space.shape[1]:
             return True
-        if round(q.x) == c_space.shape[0] - 1 or round(q.y) == c_space.shape[1] - 1:
-            return c_space[round(q.x)][round(q.y)] == 1
+        x = round(q.x)
+        y = round(q.y)
+        if x == c_space.shape[0] - 1 or y == c_space.shape[1] - 1:
+            return c_space[x][y] == 1
         
-        return c_space[round(q.x)][round(q.y)] == 1 or c_space[round(q.x)+1][round(q.y)] == 1 or c_space[round(q.x)+1][round(q.y)+1] == 1 or c_space[round(q.x)][round(q.y)+1] == 1 # round up error compensation
-
+        return c_space[x][y] == 1 or c_space[x+1][y] == 1 or c_space[x+1][y+1] == 1 or c_space[x][y+1] == 1 # round up error compensation
 
     def DISTANCE(self, q_new, q_goal):
         return q_goal.dist(q_new)
@@ -272,29 +296,29 @@ if __name__ == "__main__":
 
     rrt = RRT_Star(grid_map=grid_map, K=K, delta_q=delta_q, p=p, max_distance=max_distance, q_start=start, q_goal=goal)
     path_first_found, path_converge, edge_goal = rrt.run_RRT_Star()
-    
+
     _, _, path_first = fill_path(path_first_found[0], path_first_found[1] ,edge_goal)
     smooth_path_first = rrt.smoothing_function(path_first, path_first_found[0])
     dist_orin_path = calculate_distance(path_first, path_first_found[0])
     dist_smooth_path = calculate_distance(smooth_path_first, path_first_found[0])
-    print(f"Distance original path at {path_first_found[2]} Iterations: ", dist_orin_path)
+    # print(f"Distance original path at {path_first_found[2]} Iterations: ", dist_orin_path)
     print(f"Distance smooth path at {path_first_found[2]} Iterations: ", dist_smooth_path)
-    print_path(path_first, path_first_found[0], f"At {path_first_found[2]} iterations original")
-    print_path(smooth_path_first, path_first_found[0], f"At {path_first_found[2]} iterations smooth")
+    # print_path(path_first, path_first_found[0], f"At {path_first_found[2]} iterations original")
+    # print_path(smooth_path_first, path_first_found[0], f"At {path_first_found[2]} iterations smooth")
     plot(grid_map, path_first_found[0], path_first_found[1], path_first, smooth_path_first, path_first_found[2])
 
     _, _, path_final = fill_path(path_converge[0], path_converge[1], edge_goal)
     smooth_path_final = rrt.smoothing_function(path_final, path_converge[0])
     dist_orin_path = calculate_distance(path_final, path_converge[0])
     dist_smooth_path = calculate_distance(smooth_path_final, path_converge[0])
-    print(f"Distance original path at {path_converge[2]} Iterations: ", dist_orin_path)
+    # print(f"Distance original path at {path_converge[2]} Iterations: ", dist_orin_path)
     print(f"Distance smooth path at {path_converge[2]} Iterations: ", dist_smooth_path)
-    print_path(path_final, path_converge[0], f"At {path_converge[2]} iterations original")
-    print_path(smooth_path_final, path_converge[0], f"At {path_converge[2]} iterations smooth")
+    # print_path(path_final, path_converge[0], f"At {path_converge[2]} iterations original")
+    # print_path(smooth_path_final, path_converge[0], f"At {path_converge[2]} iterations smooth")
     plot(grid_map, path_converge[0], path_converge[1], path_final, smooth_path_final, path_converge[2])
 
     # Finetune parameters: 
     # Map 0: k=1000, delta_q=5, p=0.2, max_range=30, start=(10,10), goal=(90,70)
-    # Map 1: k=2000, delta_q=10, p=0.2, max_range=30, start=(60,60), goal=(90,60)
+    # Map 1: k=3000, delta_q=10, p=0.2, max_range=20, start=(60,60), goal=(90,60)
     # Map 2: k=20000, delta_q=10, p=0.2, max_range=30, start=(8,31), goal=(139,38)
-    # Map 3: k=2000, delta_q=15, p=0.2, max_range=40, start=(50,90), goal=(375,375)
+    # Map 3: k=4000, delta_q=15, p=0.2, max_range=40, start=(50,90), goal=(375,375)

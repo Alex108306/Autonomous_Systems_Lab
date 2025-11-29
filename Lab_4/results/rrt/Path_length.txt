@@ -1,0 +1,19 @@
+Map 0:
+Path found in 37 iterations
+Distance original path:  152.33838635988553
+Distance smooth path:  134.15772787747161
+
+Map 1:
+Path found in 772 iterations
+Distance original path:  294.27170780533595
+Distance smooth path:  229.88103472081522
+
+Map 2:
+Path found in 13643 iterations
+Distance original path:  962.3618739820098
+Distance smooth path:  886.8024142410746
+
+Map 3:
+Path found in 245 iterations
+Distance original path:  599.5687093295876
+Distance smooth path:  511.46308981472686
